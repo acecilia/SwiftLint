@@ -53,7 +53,7 @@ private extension Rule {
               storage: RuleStorage,
               configuration: Configuration,
               superfluousDisableCommandRule: SuperfluousDisableCommandRule?,
-              compilerArguments: [String]) -> LintResult? {
+              buildLogInfo: BuildLogInfo) -> LintResult? {
         if !(self is SourceKitFreeRule) && file.sourcekitdFailed {
             return nil
         }
@@ -64,10 +64,10 @@ private extension Rule {
         let ruleTime: (String, Double)?
         if benchmark {
             let start = Date()
-            violations = validate(file: file, using: storage, compilerArguments: compilerArguments)
+            violations = validate(file: file, using: storage, buildLogInfo: buildLogInfo)
             ruleTime = (ruleID, -start.timeIntervalSinceNow)
         } else {
-            violations = validate(file: file, using: storage, compilerArguments: compilerArguments)
+            violations = validate(file: file, using: storage, buildLogInfo: buildLogInfo)
             ruleTime = nil
         }
 
@@ -108,6 +108,32 @@ private extension Rule {
     }
 }
 
+public struct BuildTimeInfo: Equatable {
+    public init() {
+    }
+}
+
+public struct BuildLogInfo: Equatable {
+    let compilerArguments: [String]
+    let buildTimeInfo: BuildTimeInfo
+
+    public init(
+        compilerArguments: [String],
+        buildTimeInfo: BuildTimeInfo
+    ) {
+        self.compilerArguments = compilerArguments
+        self.buildTimeInfo = buildTimeInfo
+    }
+
+    public static var empty: BuildLogInfo {
+        return BuildLogInfo(compilerArguments: [], buildTimeInfo: .init())
+    }
+
+    var isEmpty: Bool {
+        return compilerArguments.isEmpty
+    }
+}
+
 /// Represents a file that can be linted for style violations and corrections after being collected.
 public struct Linter {
     /// The file to lint with this linter.
@@ -117,7 +143,7 @@ public struct Linter {
     fileprivate let rules: [Rule]
     fileprivate let cache: LinterCache?
     fileprivate let configuration: Configuration
-    fileprivate let compilerArguments: [String]
+    fileprivate let buildLogInfo: BuildLogInfo
 
     /// Creates a `Linter` by specifying its properties directly.
     ///
@@ -126,13 +152,13 @@ public struct Linter {
     /// - parameter cache:             The persisted cache to use for this linter.
     /// - parameter compilerArguments: The compiler arguments to use for this linter if it is to execute analyzer rules.
     public init(file: SwiftLintFile, configuration: Configuration = Configuration.default, cache: LinterCache? = nil,
-                compilerArguments: [String] = []) {
+                buildLogInfo: BuildLogInfo = .empty) {
         self.file = file
         self.cache = cache
         self.configuration = configuration
-        self.compilerArguments = compilerArguments
+        self.buildLogInfo = buildLogInfo
         let rules = configuration.rules.filter { rule in
-            if compilerArguments.isEmpty {
+            if buildLogInfo.isEmpty {
                 return !(rule is AnalyzerRule)
             } else {
                 return rule is AnalyzerRule
@@ -149,7 +175,7 @@ public struct Linter {
     /// - returns: A linter capable of checking for violations after running each rule's collection step.
     public func collect(into storage: RuleStorage) -> CollectedLinter {
         DispatchQueue.concurrentPerform(iterations: rules.count) { idx in
-            rules[idx].collectInfo(for: file, into: storage, compilerArguments: compilerArguments)
+            rules[idx].collectInfo(for: file, into: storage, buildLogInfo: buildLogInfo)
         }
         return CollectedLinter(from: self)
     }
@@ -164,14 +190,14 @@ public struct CollectedLinter {
     private let rules: [Rule]
     private let cache: LinterCache?
     private let configuration: Configuration
-    private let compilerArguments: [String]
+    private let buildLogInfo: BuildLogInfo
 
     fileprivate init(from linter: Linter) {
         file = linter.file
         rules = linter.rules
         cache = linter.cache
         configuration = linter.configuration
-        compilerArguments = linter.compilerArguments
+        buildLogInfo = linter.buildLogInfo
     }
 
     /// Computes or retrieves style violations.
@@ -211,7 +237,7 @@ public struct CollectedLinter {
                     storage: storage,
                     configuration: self.configuration,
                     superfluousDisableCommandRule: superfluousDisableCommandRule,
-                    compilerArguments: self.compilerArguments)
+                    buildLogInfo: self.buildLogInfo)
         }
         let undefinedSuperfluousCommandViolations = self.undefinedSuperfluousCommandViolations(
             regions: regions, configuration: configuration,
@@ -277,7 +303,7 @@ public struct CollectedLinter {
 
         var corrections = [Correction]()
         for rule in rules.compactMap({ $0 as? CorrectableRule }) {
-            let newCorrections = rule.correct(file: file, using: storage, compilerArguments: compilerArguments)
+            let newCorrections = rule.correct(file: file, using: storage, buildLogInfo: buildLogInfo)
             corrections += newCorrections
             if newCorrections.isNotEmpty {
                 file.invalidateCache()

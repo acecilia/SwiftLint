@@ -38,12 +38,12 @@ class CollectingRuleTests: XCTestCase {
 
     func testCollectsAnalyzerFiles() {
         struct Spec: MockCollectingRule & AnalyzerRule {
-            func collectInfo(for file: SwiftLintFile, compilerArguments: [String]) -> [String] {
-                return compilerArguments
+            func collectInfo(for file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> BuildLogInfo {
+                return buildLogInfo
             }
-            func validate(file: SwiftLintFile, collectedInfo: [SwiftLintFile: [String]], compilerArguments: [String])
+            func validate(file: SwiftLintFile, collectedInfo: [SwiftLintFile: BuildLogInfo], buildLogInfo: BuildLogInfo)
                 -> [StyleViolation] {
-                    XCTAssertEqual(collectedInfo[file], compilerArguments)
+                    XCTAssertEqual(collectedInfo[file], buildLogInfo)
                     return [StyleViolation(ruleDescription: Spec.description,
                                            location: Location(file: file, byteOffset: 0))]
             }
@@ -78,11 +78,11 @@ class CollectingRuleTests: XCTestCase {
         }
 
         struct AnalyzerSpec: MockCollectingRule & AnalyzerRule & CollectingCorrectableRule {
-            func collectInfo(for file: SwiftLintFile, compilerArguments: [String]) -> String {
+            func collectInfo(for file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> String {
                 return file.contents
             }
 
-            func validate(file: SwiftLintFile, collectedInfo: [SwiftLintFile: String], compilerArguments: [String])
+            func validate(file: SwiftLintFile, collectedInfo: [SwiftLintFile: String], buildLogInfo: BuildLogInfo)
                 -> [StyleViolation] {
                     if collectedInfo[file] == "baz" {
                         return [StyleViolation(ruleDescription: Spec.description,
@@ -93,7 +93,7 @@ class CollectingRuleTests: XCTestCase {
             }
 
             func correct(file: SwiftLintFile, collectedInfo: [SwiftLintFile: String],
-                         compilerArguments: [String]) -> [Correction] {
+                         buildLogInfo: BuildLogInfo) -> [Correction] {
                 if collectedInfo[file] == "baz" {
                     return [Correction(ruleDescription: Spec.description,
                                        location: Location(file: file, byteOffset: 2))]

@@ -18,8 +18,8 @@ public struct UnusedImportRule: CorrectableRule, ConfigurationProviderRule, Anal
         requiresFileOnDisk: true
     )
 
-    public func validate(file: SwiftLintFile, compilerArguments: [String]) -> [StyleViolation] {
-        return importUsage(in: file, compilerArguments: compilerArguments).map { importUsage in
+    public func validate(file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> [StyleViolation] {
+        return importUsage(in: file, compilerArguments: buildLogInfo.compilerArguments).map { importUsage in
             StyleViolation(ruleDescription: Self.description,
                            severity: configuration.severity.severity,
                            location: Location(file: file, characterOffset: importUsage.violationRange?.location ?? 1),
@@ -27,8 +27,8 @@ public struct UnusedImportRule: CorrectableRule, ConfigurationProviderRule, Anal
         }
     }
 
-    public func correct(file: SwiftLintFile, compilerArguments: [String]) -> [Correction] {
-        let importUsages = importUsage(in: file, compilerArguments: compilerArguments)
+    public func correct(file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> [Correction] {
+        let importUsages = importUsage(in: file, compilerArguments: buildLogInfo.compilerArguments)
         let matches = file.ruleEnabled(violatingRanges: importUsages.compactMap({ $0.violationRange }), for: self)
 
         var contents = file.stringView.nsString

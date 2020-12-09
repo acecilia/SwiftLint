@@ -16,7 +16,7 @@ private extension SwiftLintFile {
         return SwiftLintFile(path: url.path)!
     }
 
-    func makeCompilerArguments() -> [String] {
+    private func makeCompilerArguments() -> [String] {
         let sdk = sdkPath()
         let frameworks = URL(fileURLWithPath: sdk)
             .deletingLastPathComponent()
@@ -30,6 +30,13 @@ private extension SwiftLintFile {
             "-sdk", sdk,
             "-j4", path!
         ]
+    }
+
+    func makeBuildLogInfo() -> BuildLogInfo {
+        return BuildLogInfo(
+            compilerArguments: makeCompilerArguments(),
+            buildTimeInfo: .init()
+        )
     }
 }
 
@@ -66,7 +73,7 @@ func violations(_ example: Example, config inputConfig: Configuration = Configur
 
     let file = SwiftLintFile.temporary(withContents: stringStrippingMarkers.code)
     let storage = RuleStorage()
-    let collecter = Linter(file: file, configuration: config, compilerArguments: file.makeCompilerArguments())
+    let collecter = Linter(file: file, configuration: config, buildLogInfo: file.makeBuildLogInfo())
     let linter = collecter.collect(into: storage)
     return linter.styleViolations(using: storage).withoutFiles()
 }
@@ -90,7 +97,7 @@ extension Collection where Element: SwiftLintFile {
             let storage = RuleStorage()
             let violations = map({ file in
                 Linter(file: file, configuration: config,
-                       compilerArguments: requiresFileOnDisk ? file.makeCompilerArguments() : [])
+                       buildLogInfo: requiresFileOnDisk ? file.makeBuildLogInfo() : .empty)
             }).map({ linter in
                 linter.collect(into: storage)
             }).flatMap({ linter in
@@ -103,7 +110,7 @@ extension Collection where Element: SwiftLintFile {
         let storage = RuleStorage()
         let corrections = map({ file in
             Linter(file: file, configuration: config,
-                   compilerArguments: requiresFileOnDisk ? file.makeCompilerArguments() : [])
+                   buildLogInfo: requiresFileOnDisk ? file.makeBuildLogInfo() : .empty)
         }).map({ linter in
             linter.collect(into: storage)
         }).flatMap({ linter in
@@ -200,10 +207,10 @@ private extension Configuration {
         let file = SwiftLintFile.temporary(withContents: cleanedBefore)
         // expectedLocations are needed to create before call `correct()`
         let expectedLocations = markerOffsets.map { Location(file: file, characterOffset: $0) }
-        let includeCompilerArguments = self.rules.contains(where: { $0 is AnalyzerRule })
-        let compilerArguments = includeCompilerArguments ? file.makeCompilerArguments() : []
+        let includeBuildLogInfo = self.rules.contains(where: { $0 is AnalyzerRule })
+        let buildLogInfo = includeBuildLogInfo ? file.makeBuildLogInfo() : .empty
         let storage = RuleStorage()
-        let collecter = Linter(file: file, configuration: self, compilerArguments: compilerArguments)
+        let collecter = Linter(file: file, configuration: self, buildLogInfo: buildLogInfo)
         let linter = collecter.collect(into: storage)
         let corrections = linter.correct(using: storage).sorted { $0.location < $1.location }
         if expectedLocations.isEmpty {

@@ -159,16 +159,16 @@ public struct ExplicitSelfRule: CorrectableRule, ConfigurationProviderRule, Anal
         requiresFileOnDisk: true
     )
 
-    public func validate(file: SwiftLintFile, compilerArguments: [String]) -> [StyleViolation] {
-        return violationRanges(in: file, compilerArguments: compilerArguments).map {
+    public func validate(file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> [StyleViolation] {
+        return violationRanges(in: file, compilerArguments: buildLogInfo.compilerArguments).map {
             StyleViolation(ruleDescription: Self.description,
                            severity: configuration.severity,
                            location: Location(file: file, characterOffset: $0.location))
         }
     }
 
-    public func correct(file: SwiftLintFile, compilerArguments: [String]) -> [Correction] {
-        let violations = violationRanges(in: file, compilerArguments: compilerArguments)
+    public func correct(file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> [Correction] {
+        let violations = violationRanges(in: file, compilerArguments: buildLogInfo.compilerArguments)
         let matches = file.ruleEnabled(violatingRanges: violations, for: self)
         if matches.isEmpty { return [] }
 

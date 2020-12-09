@@ -25,7 +25,7 @@ public protocol Rule {
     /// - parameter compilerArguments: The compiler arguments needed to compile this file.
     ///
     /// - returns: All style violations to the rule's expectations.
-    func validate(file: SwiftLintFile, compilerArguments: [String]) -> [StyleViolation]
+    func validate(file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> [StyleViolation]
 
     /// Executes the rule on a file and returns any violations to the rule's expectations.
     ///
@@ -48,7 +48,7 @@ public protocol Rule {
     /// - parameter file:              The file for which to collect info.
     /// - parameter storage:           The storage object where collected info should be saved.
     /// - parameter compilerArguments: The compiler arguments needed to compile this file.
-    func collectInfo(for file: SwiftLintFile, into storage: RuleStorage, compilerArguments: [String])
+    func collectInfo(for file: SwiftLintFile, into storage: RuleStorage, buildLogInfo: BuildLogInfo)
 
     /// Executes the rule on a file after collecting file info for all files and returns any violations to the rule's
     /// expectations.
@@ -60,16 +60,16 @@ public protocol Rule {
     /// - parameter compilerArguments: The compiler arguments needed to compile this file.
     ///
     /// - returns: All style violations to the rule's expectations.
-    func validate(file: SwiftLintFile, using storage: RuleStorage, compilerArguments: [String]) -> [StyleViolation]
+    func validate(file: SwiftLintFile, using storage: RuleStorage, buildLogInfo: BuildLogInfo) -> [StyleViolation]
 }
 
 extension Rule {
     public func validate(file: SwiftLintFile, using storage: RuleStorage,
-                         compilerArguments: [String]) -> [StyleViolation] {
-        return validate(file: file, compilerArguments: compilerArguments)
+                         buildLogInfo: BuildLogInfo) -> [StyleViolation] {
+        return validate(file: file, buildLogInfo: buildLogInfo)
     }
 
-    public func validate(file: SwiftLintFile, compilerArguments: [String]) -> [StyleViolation] {
+    public func validate(file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> [StyleViolation] {
         return validate(file: file)
     }
 
@@ -77,7 +77,7 @@ extension Rule {
         return Self.description == type(of: rule).description
     }
 
-    public func collectInfo(for file: SwiftLintFile, into storage: RuleStorage, compilerArguments: [String]) {
+    public func collectInfo(for file: SwiftLintFile, into storage: RuleStorage, buildLogInfo: BuildLogInfo) {
         // no-op: only CollectingRules mutate their storage
     }
 
@@ -109,7 +109,7 @@ public protocol CorrectableRule: Rule {
     /// - parameter compilerArguments: The compiler arguments needed to compile this file.
     ///
     /// - returns: All corrections that were applied.
-    func correct(file: SwiftLintFile, compilerArguments: [String]) -> [Correction]
+    func correct(file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> [Correction]
 
     /// Attempts to correct the violations to this rule in the specified file.
     ///
@@ -128,15 +128,15 @@ public protocol CorrectableRule: Rule {
     /// - parameter compilerArguments: The compiler arguments needed to compile this file.
     ///
     /// - returns: All corrections that were applied.
-    func correct(file: SwiftLintFile, using storage: RuleStorage, compilerArguments: [String]) -> [Correction]
+    func correct(file: SwiftLintFile, using storage: RuleStorage, buildLogInfo: BuildLogInfo) -> [Correction]
 }
 
 public extension CorrectableRule {
-    func correct(file: SwiftLintFile, compilerArguments: [String]) -> [Correction] {
+    func correct(file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> [Correction] {
         return correct(file: file)
     }
-    func correct(file: SwiftLintFile, using storage: RuleStorage, compilerArguments: [String]) -> [Correction] {
-        return correct(file: file, compilerArguments: compilerArguments)
+    func correct(file: SwiftLintFile, using storage: RuleStorage, buildLogInfo: BuildLogInfo) -> [Correction] {
+        return correct(file: file, buildLogInfo: buildLogInfo)
     }
 }
 
@@ -239,7 +239,7 @@ public protocol CollectingRule: AnyCollectingRule {
     /// - parameter compilerArguments: The compiler arguments needed to compile this file.
     ///
     /// - returns: The collected file information.
-    func collectInfo(for file: SwiftLintFile, compilerArguments: [String]) -> FileInfo
+    func collectInfo(for file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> FileInfo
 
     /// Collects information for the specified file, to be analyzed by a `CollectedLinter`.
     ///
@@ -257,7 +257,7 @@ public protocol CollectingRule: AnyCollectingRule {
     ///
     /// - returns: All style violations to the rule's expectations.
     func validate(file: SwiftLintFile, collectedInfo: [SwiftLintFile: FileInfo],
-                  compilerArguments: [String]) -> [StyleViolation]
+                  buildLogInfo: BuildLogInfo) -> [StyleViolation]
 
     /// Executes the rule on a file after collecting file info for all files and returns any violations to the rule's
     /// expectations.
@@ -270,27 +270,27 @@ public protocol CollectingRule: AnyCollectingRule {
 }
 
 public extension CollectingRule {
-    func collectInfo(for file: SwiftLintFile, into storage: RuleStorage, compilerArguments: [String]) {
-        storage.collect(info: collectInfo(for: file, compilerArguments: compilerArguments),
+    func collectInfo(for file: SwiftLintFile, into storage: RuleStorage, buildLogInfo: BuildLogInfo) {
+        storage.collect(info: collectInfo(for: file, buildLogInfo: buildLogInfo),
                         for: file, in: self)
     }
-    func validate(file: SwiftLintFile, using storage: RuleStorage, compilerArguments: [String]) -> [StyleViolation] {
+    func validate(file: SwiftLintFile, using storage: RuleStorage, buildLogInfo: BuildLogInfo) -> [StyleViolation] {
         guard let info = storage.collectedInfo(for: self) else {
             queuedFatalError("Attempt to validate a CollectingRule before collecting info for it")
         }
-        return validate(file: file, collectedInfo: info, compilerArguments: compilerArguments)
+        return validate(file: file, collectedInfo: info, buildLogInfo: buildLogInfo)
     }
-    func collectInfo(for file: SwiftLintFile, compilerArguments: [String]) -> FileInfo {
+    func collectInfo(for file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> FileInfo {
         return collectInfo(for: file)
     }
     func validate(file: SwiftLintFile, collectedInfo: [SwiftLintFile: FileInfo],
-                  compilerArguments: [String]) -> [StyleViolation] {
+                  buildLogInfo: BuildLogInfo) -> [StyleViolation] {
         return validate(file: file, collectedInfo: collectedInfo)
     }
     func validate(file: SwiftLintFile) -> [StyleViolation] {
         queuedFatalError("Must call `validate(file:collectedInfo:)` for CollectingRule")
     }
-    func validate(file: SwiftLintFile, compilerArguments: [String]) -> [StyleViolation] {
+    func validate(file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> [StyleViolation] {
         queuedFatalError("Must call `validate(file:collectedInfo:compilerArguments:)` for CollectingRule")
     }
 }
@@ -326,7 +326,7 @@ public protocol CollectingCorrectableRule: CollectingRule, CorrectableRule {
     ///
     /// - returns: All corrections that were applied.
     func correct(file: SwiftLintFile, collectedInfo: [SwiftLintFile: FileInfo],
-                 compilerArguments: [String]) -> [Correction]
+                 buildLogInfo: BuildLogInfo) -> [Correction]
 
     /// Attempts to correct the violations to this rule in the specified file after collecting file info for all files
     /// and returns all corrections that were applied.
@@ -342,19 +342,19 @@ public protocol CollectingCorrectableRule: CollectingRule, CorrectableRule {
 
 public extension CollectingCorrectableRule {
     func correct(file: SwiftLintFile, collectedInfo: [SwiftLintFile: FileInfo],
-                 compilerArguments: [String]) -> [Correction] {
+                 buildLogInfo: BuildLogInfo) -> [Correction] {
         return correct(file: file, collectedInfo: collectedInfo)
     }
-    func correct(file: SwiftLintFile, using storage: RuleStorage, compilerArguments: [String]) -> [Correction] {
+    func correct(file: SwiftLintFile, using storage: RuleStorage, buildLogInfo: BuildLogInfo) -> [Correction] {
         guard let info = storage.collectedInfo(for: self) else {
             queuedFatalError("Attempt to correct a CollectingRule before collecting info for it")
         }
-        return correct(file: file, collectedInfo: info, compilerArguments: compilerArguments)
+        return correct(file: file, collectedInfo: info, buildLogInfo: buildLogInfo)
     }
     func correct(file: SwiftLintFile) -> [Correction] {
         queuedFatalError("Must call `correct(file:collectedInfo:)` for AnalyzerRule")
     }
-    func correct(file: SwiftLintFile, compilerArguments: [String]) -> [Correction] {
+    func correct(file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> [Correction] {
         queuedFatalError("Must call `correct(file:collectedInfo:compilerArguments:)` for AnalyzerRule")
     }
 }
@@ -363,7 +363,7 @@ public extension CollectingCorrectableRule where Self: AnalyzerRule {
     func correct(file: SwiftLintFile) -> [Correction] {
         queuedFatalError("Must call `correct(file:collectedInfo:compilerArguments:)` for AnalyzerRule")
     }
-    func correct(file: SwiftLintFile, compilerArguments: [String]) -> [Correction] {
+    func correct(file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> [Correction] {
         queuedFatalError("Must call `correct(file:collectedInfo:compilerArguments:)` for AnalyzerRule")
     }
     func correct(file: SwiftLintFile, collectedInfo: [SwiftLintFile: FileInfo]) -> [Correction] {

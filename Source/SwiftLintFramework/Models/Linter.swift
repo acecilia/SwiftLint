@@ -108,8 +108,8 @@ private extension Rule {
     }
 }
 
-public struct BuildTimeItem: Equatable {
-    let buildTime: TimeInterval
+public struct BuildTimeItem: Hashable {
+    public let buildTime: TimeInterval
     let location: Location
     let expressionType: String
 
@@ -126,25 +126,17 @@ public struct BuildTimeItem: Equatable {
 
 public struct BuildTimeMetrics: Equatable {
     let totalBuildTime: TimeInterval
-    public let items: [BuildTimeItem]
+    let totalCalculatedBuildTime: TimeInterval
+    let items: [BuildTimeItem]
 
     public init(
         totalBuildTime: TimeInterval,
+        totalCalculatedBuildTime: TimeInterval,
         items: [BuildTimeItem]
     ) {
         self.totalBuildTime = totalBuildTime
+        self.totalCalculatedBuildTime = totalCalculatedBuildTime
         self.items = items
-    }
-
-    public func buildTimeMetricts(forFile path: String?) -> BuildTimeMetrics {
-        guard let path = path else {
-            return BuildTimeMetrics(totalBuildTime: totalBuildTime, items: [])
-        }
-
-        return BuildTimeMetrics(
-            totalBuildTime: totalBuildTime,
-            items: items.filter { $0.location.file == path }
-        )
     }
 }
 

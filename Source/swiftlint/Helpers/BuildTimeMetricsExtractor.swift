@@ -6,12 +6,12 @@ struct BuildTimeMetricsExtractor {
     private static let buildTimeMetricRegex = try! NSRegularExpression(pattern: #"^(\d*\.?\d*)ms\t(.+)\t(.*)"#)
     private static let locationRegex = try! NSRegularExpression(pattern: #"(.*):(\d+):(\d+)"#, options: [])
 
-    static func getBuildTimeMetrics(compilerLogs: String) -> BuildTimeMetrics? {
+    static func getBuildTimeMetrics(compilerLogs: String) -> AllBuildTimeMetrics? {
         guard let totalBuildTime = getTotalBuildTime(compilerLogs) else {
             return nil
         }
         let items = getBuildTimeItems(compilerLogs)
-        return BuildTimeMetrics(
+        return AllBuildTimeMetrics(
             totalBuildTime: totalBuildTime,
             items: items
         )
@@ -19,8 +19,8 @@ struct BuildTimeMetricsExtractor {
 }
 
 private extension BuildTimeMetricsExtractor {
-    static func getBuildTimeItems(_ string: String) -> [BuildTimeItem] {
-        var items: [BuildTimeItem] = []
+    static func getBuildTimeItems(_ string: String) -> [File: Set<BuildTimeItem>] {
+        var items: [File: Set<BuildTimeItem>] = [:]
         string.enumerateLines { line, _ in
             guard let groupMatches = buildTimeMetricRegex.groupMatches(in: line) else {
                 return
@@ -38,19 +38,23 @@ private extension BuildTimeMetricsExtractor {
                 return
             }
 
-            guard let locationGroupMatches = locationRegex.groupMatches(in: fileInfo) else {
+            guard let locationGroupMatches = locationRegex.groupMatches(in: fileInfo),
+                  let file = locationGroupMatches[safe: 0] else {
                 // 0.04ms    <invalid loc>    getter hashValue
                 return
             }
 
             let location = Location(
-                file: locationGroupMatches[safe: 0],
+                file: file,
                 line: locationGroupMatches[safe: 1].flatMap { Int($0) },
                 character: locationGroupMatches[safe: 2].flatMap { Int($0) }
             )
 
+
             let item = BuildTimeItem(buildTime: buildTime, location: location, expressionType: expressionType)
-            items.append(item)
+            var existingItems = items[file] ?? []
+            existingItems.insert(item)
+            items[file] = existingItems
         }
 
         return items

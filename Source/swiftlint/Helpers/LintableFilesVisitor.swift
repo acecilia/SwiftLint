@@ -23,11 +23,40 @@ enum CompilerInvocations {
     }
 }
 
+struct AllBuildTimeMetrics: Equatable {
+    let totalBuildTime: TimeInterval
+    let totalCalculatedBuildTime: TimeInterval
+    public let items: [File: Set<BuildTimeItem>]
+
+    public init(
+        totalBuildTime: TimeInterval,
+        items: [File: Set<BuildTimeItem>]
+    ) {
+        self.totalBuildTime = totalBuildTime
+        self.totalCalculatedBuildTime = items.values.flatMap { $0 }.reduce(into: 0) { result, item in
+            result += item.buildTime
+        }
+        self.items = items
+    }
+
+    public func buildTimeMetricts(forFile path: String?) -> BuildTimeMetrics {
+        guard let path = path else {
+            return BuildTimeMetrics(totalBuildTime: totalBuildTime, totalCalculatedBuildTime: 0, items: [])
+        }
+
+        return BuildTimeMetrics(
+            totalBuildTime: totalBuildTime,
+            totalCalculatedBuildTime: totalCalculatedBuildTime,
+            items: Array(items[path] ?? [])
+        )
+    }
+}
+
 enum LintOrAnalyzeModeWithCompilerArguments {
     case lint
     case analyze(
         allCompilerInvocations: CompilerInvocations,
-        buildTimeMetrics: BuildTimeMetrics?
+        buildTimeMetrics: AllBuildTimeMetrics?
     )
 }
 
@@ -75,7 +104,7 @@ struct LintableFilesVisitor {
 
     private init(paths: [String], action: String, useSTDIN: Bool, quiet: Bool,
                  useScriptInputFiles: Bool, forceExclude: Bool, useExcludingByPrefix: Bool,
-                 cache: LinterCache?, compilerInvocations: CompilerInvocations?, buildTimeMetrics: BuildTimeMetrics?,
+                 cache: LinterCache?, compilerInvocations: CompilerInvocations?, buildTimeMetrics: AllBuildTimeMetrics?,
                  allowZeroLintableFiles: Bool, block: @escaping (CollectedLinter) -> Void) {
         self.paths = resolveParamsFiles(args: paths)
         self.action = action
@@ -101,7 +130,7 @@ struct LintableFilesVisitor {
                        block: @escaping (CollectedLinter) -> Void)
         -> Result<LintableFilesVisitor, CommandantError<()>> {
         let compilerInvocations: CompilerInvocations?
-        let buildTimeMetricts: BuildTimeMetrics?
+        let buildTimeMetricts: AllBuildTimeMetrics?
         if options.mode == .lint {
             compilerInvocations = nil
             buildTimeMetricts = nil
@@ -190,7 +219,7 @@ struct LintableFilesVisitor {
     }
 
     private static func loadBuildTimeMetrics(_ options: LintOrAnalyzeOptions)
-        -> Result<BuildTimeMetrics, CommandantError<()>> {
+        -> Result<AllBuildTimeMetrics, CommandantError<()>> {
         if !options.compilerLogPath.isEmpty {
             let path = options.compilerLogPath
             guard let buildTimeMetrics = self.loadLogBuildTimeMetrics(path) else {
@@ -205,7 +234,7 @@ struct LintableFilesVisitor {
         return .failure(.usageError(description: "Could not read build time metrics"))
     }
 
-    private static func loadLogBuildTimeMetrics(_ path: String) -> BuildTimeMetrics? {
+    private static func loadLogBuildTimeMetrics(_ path: String) -> AllBuildTimeMetrics? {
         if let data = FileManager.default.contents(atPath: path),
             let logContents = String(data: data, encoding: .utf8) {
             if logContents.isEmpty {

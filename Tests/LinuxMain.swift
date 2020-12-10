@@ -40,6 +40,12 @@ extension BlockBasedKVORuleTests {
     ]
 }
 
+extension BuildTimeRuleTests {
+    static var allTests: [(String, (BuildTimeRuleTests) -> () throws -> Void)] = [
+        ("testWithDefaultConfiguration", testWithDefaultConfiguration)
+    ]
+}
+
 extension ClassDelegateProtocolRuleTests {
     static var allTests: [(String, (ClassDelegateProtocolRuleTests) -> () throws -> Void)] = [
         ("testWithDefaultConfiguration", testWithDefaultConfiguration)
@@ -1768,6 +1774,7 @@ XCTMain([
     testCase(ArrayInitRuleTests.allTests),
     testCase(AttributesRuleTests.allTests),
     testCase(BlockBasedKVORuleTests.allTests),
+    testCase(BuildTimeRuleTests.allTests),
     testCase(ClassDelegateProtocolRuleTests.allTests),
     testCase(ClosingBraceRuleTests.allTests),
     testCase(ClosureBodyLengthRuleTests.allTests),

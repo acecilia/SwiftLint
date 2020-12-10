@@ -24,6 +24,12 @@ class BlockBasedKVORuleTests: XCTestCase {
     }
 }
 
+class BuildTimeRuleTests: XCTestCase {
+    func testWithDefaultConfiguration() {
+        verifyRule(BuildTimeRule.description)
+    }
+}
+
 class ClassDelegateProtocolRuleTests: XCTestCase {
     func testWithDefaultConfiguration() {
         verifyRule(ClassDelegateProtocolRule.description)

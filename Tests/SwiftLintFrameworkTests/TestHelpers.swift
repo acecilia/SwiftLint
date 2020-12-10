@@ -35,7 +35,16 @@ private extension SwiftLintFile {
     func makeBuildLogInfo() -> BuildLogInfo {
         return BuildLogInfo(
             compilerArguments: makeCompilerArguments(),
-            buildTimeInfo: .init()
+            buildTimeMetrics: BuildTimeMetrics(
+                totalBuildTime: 123,
+                items: [
+                    BuildTimeItem(
+                        buildTime: 12,
+                        location: Location(file: "File.swift", line: 1, character: 10),
+                        expressionType: "getter icon"
+                    )
+                ]
+            )
         )
     }
 }

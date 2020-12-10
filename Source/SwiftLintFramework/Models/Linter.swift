@@ -108,29 +108,64 @@ private extension Rule {
     }
 }
 
-public struct BuildTimeInfo: Equatable {
-    public init() {
+public struct BuildTimeItem: Equatable {
+    let buildTime: TimeInterval
+    let location: Location
+    let expressionType: String
+
+    public init(
+        buildTime: TimeInterval,
+        location: Location,
+        expressionType: String
+    ) {
+        self.buildTime = buildTime
+        self.location = location
+        self.expressionType = expressionType
+    }
+}
+
+public struct BuildTimeMetrics: Equatable {
+    let totalBuildTime: TimeInterval
+    public let items: [BuildTimeItem]
+
+    public init(
+        totalBuildTime: TimeInterval,
+        items: [BuildTimeItem]
+    ) {
+        self.totalBuildTime = totalBuildTime
+        self.items = items
+    }
+
+    public func buildTimeMetricts(forFile path: String?) -> BuildTimeMetrics {
+        guard let path = path else {
+            return BuildTimeMetrics(totalBuildTime: totalBuildTime, items: [])
+        }
+
+        return BuildTimeMetrics(
+            totalBuildTime: totalBuildTime,
+            items: items.filter { $0.location.file == path }
+        )
     }
 }
 
 public struct BuildLogInfo: Equatable {
     let compilerArguments: [String]
-    let buildTimeInfo: BuildTimeInfo
+    let buildTimeMetrics: BuildTimeMetrics?
 
     public init(
         compilerArguments: [String],
-        buildTimeInfo: BuildTimeInfo
+        buildTimeMetrics: BuildTimeMetrics?
     ) {
         self.compilerArguments = compilerArguments
-        self.buildTimeInfo = buildTimeInfo
+        self.buildTimeMetrics = buildTimeMetrics
     }
 
     public static var empty: BuildLogInfo {
-        return BuildLogInfo(compilerArguments: [], buildTimeInfo: .init())
+        return BuildLogInfo(compilerArguments: [], buildTimeMetrics: nil)
     }
 
     var isEmpty: Bool {
-        return compilerArguments.isEmpty
+        return compilerArguments.isEmpty && (buildTimeMetrics?.items.isEmpty ?? true)
     }
 }
 

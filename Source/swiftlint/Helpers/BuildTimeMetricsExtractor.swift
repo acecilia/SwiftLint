@@ -20,47 +20,72 @@ struct BuildTimeMetricsExtractor {
 
 private extension BuildTimeMetricsExtractor {
     static func getBuildTimeItems(_ string: String) -> [File: Set<ExpressionBuildTime>] {
+        let group = DispatchGroup()
         var storage: [File: Set<ExpressionBuildTime>] = [:]
         string.enumerateLines { line, _ in
-            guard let groupMatches = buildTimeMetricRegex.groupMatches(in: line) else {
-                return
+            group.enter()
+            DispatchQueue.global().async {
+                guard let (file, expressionBuildTime) = findExpressionBuildTime(line: line) else {
+                    group.leave()
+                    return
+                }
+                DispatchQueue.main.async {
+                    var existingExpressionBuildTimes = storage[file] ?? []
+                    existingExpressionBuildTimes.insert(expressionBuildTime)
+                    storage[file] = existingExpressionBuildTimes
+                    group.leave()
+                }
             }
-
-            guard let timeString = groupMatches[safe: 0],
-                  let fileInfo = groupMatches[safe: 1],
-                  let expressionType = groupMatches[safe: 2] else {
-                assertionFailure("This must never happen")
-                return
-            }
-
-            guard let buildTime = TimeInterval(timeString) else {
-                assertionFailure("This must never happen")
-                return
-            }
-
-            guard let locationGroupMatches = locationRegex.groupMatches(in: fileInfo),
-                  let file = locationGroupMatches[safe: 0] else {
-                // 0.04ms    <invalid loc>    getter hashValue
-                return
-            }
-
-            let location = Location(
-                file: file,
-                line: locationGroupMatches[safe: 1].flatMap { Int($0) },
-                character: locationGroupMatches[safe: 2].flatMap { Int($0) }
-            )
-
-
-            let expressionBuildTime = ExpressionBuildTime(buildTime: buildTime, location: location, expressionType: expressionType)
-            var existingExpressionBuildTimes = storage[file] ?? []
-            existingExpressionBuildTimes.insert(expressionBuildTime)
-            storage[file] = existingExpressionBuildTimes
         }
-
+        group.wait()
         return storage
     }
 
+    static func findExpressionBuildTime(line: String) -> (File, ExpressionBuildTime)? {
+        guard let groupMatches = buildTimeMetricRegex.groupMatches(in: line) else {
+            return nil
+        }
+
+        guard let timeString = groupMatches[safe: 0],
+              let fileInfo = groupMatches[safe: 1],
+              let expressionType = groupMatches[safe: 2] else {
+            assertionFailure("This must never happen")
+            return nil
+        }
+
+        guard let buildTime = TimeInterval(timeString) else {
+            assertionFailure("This must never happen")
+            return nil
+        }
+
+        guard let locationGroupMatches = locationRegex.groupMatches(in: fileInfo),
+              let file = locationGroupMatches[safe: 0] else {
+            // 0.04ms    <invalid loc>    getter hashValue
+            return nil
+        }
+
+        let location = Location(
+            file: file,
+            line: locationGroupMatches[safe: 1].flatMap { Int($0) },
+            character: locationGroupMatches[safe: 2].flatMap { Int($0) }
+        )
+
+        let expressionBuildTime = ExpressionBuildTime(
+            buildTime: buildTime,
+            location: location,
+            expressionType: expressionType
+        )
+        return (file, expressionBuildTime)
+    }
+
     static func getTotalBuildTime(_ string: String) -> TimeInterval? {
+//        guard let indexOfLastLineBreak = string
+//                .trimmingTrailingCharacters(in: .whitespacesAndNewlines)
+//                .lastIndex(of: "\n") else {
+//            return nil
+//        }
+//        let lastLine = String(string.suffix(from: indexOfLastLineBreak))
+        // Apply regex on the last line and not on the full build log, for better performance
         guard let groupMatches = totalBuildTimeRegex.groupMatches(in: string),
               let totalBuildTimeString = groupMatches.first,
               let totalBuildTimeInSeconds = TimeInterval(totalBuildTimeString)

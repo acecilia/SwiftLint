@@ -2,24 +2,45 @@ import Foundation
 import SourceKittenFramework
 
 struct CompilerArgumentsExtractor {
-    static func allCompilerInvocations(compilerLogs: String) -> [String] {
-        var compilerInvocations = [String]()
-        compilerLogs.enumerateLines { line, _ in
-            if let swiftcIndex = line.range(of: "swiftc ")?.upperBound, line.contains(" -module-name ") {
-                let invocation = line[swiftcIndex...]
-                    .components(separatedBy: " ")
-                    .expandingResponseFiles
-                    .joined(separator: " ")
-                compilerInvocations.append(invocation)
-            }
-        }
+//    static func allCompilerInvocations(compilerLogs: String) -> [String] {
+//        var compilerInvocations = [String]()
+//        compilerLogs.enumerateLines { line, _ in
+//            if let swiftcIndex = line.range(of: "swiftc ")?.upperBound, line.contains(" -module-name ") {
+//                let invocation = line[swiftcIndex...]
+//                    .components(separatedBy: " ")
+//                    .expandingResponseFiles
+//                    .joined(separator: " ")
+//                compilerInvocations.append(invocation)
+//            }
+//        }
+//
+//        return compilerInvocations
+//    }
 
+    static func allCompilerInvocations(compilerLogs: String) -> [CompilerInvocation] {
+        let compilerInvocations = ConcurrentLinesExtractor.extract(
+            string: compilerLogs,
+            extractOperation: getCompilerInvocation
+        )
         return compilerInvocations
     }
 
-    static func compilerArgumentsForFile(_ sourceFile: String, compilerInvocations: [String]) -> [String]? {
+    private static func getCompilerInvocation(line: String) -> CompilerInvocation? {
+        guard let swiftcIndex = line.range(of: "swiftc ")?.upperBound, line.contains(" -module-name ") else {
+            return nil
+        }
+
+        let elements = line[swiftcIndex...]
+            .components(separatedBy: " ")
+            .expandingResponseFiles
+        return CompilerInvocation(elements: elements)
+    }
+
+    static func compilerArgumentsForFile(_ sourceFile: String, compilerInvocations: [CompilerInvocation]) -> [String]? {
         let escapedSourceFile = sourceFile.replacingOccurrences(of: " ", with: "\\ ")
-        guard let compilerInvocation = compilerInvocations.first(where: { $0.contains(escapedSourceFile) }) else {
+        guard let compilerInvocation = compilerInvocations.first(
+            where: { $0.elements.first(where: { $0.contains(escapedSourceFile) }) != nil }
+        ) else {
             return nil
         }
 
@@ -34,29 +55,40 @@ struct CompilerArgumentsExtractor {
      - returns: Filtered compiler arguments.
      */
     static func filterCompilerArguments(_ args: [String]) -> [String] {
-        var args = args
-        // https://github.com/realm/SwiftLint/issues/3365
-        args = args.map { $0.replacingOccurrences(of: "\\=", with: "=") }
-        args.append(contentsOf: ["-D", "DEBUG"])
-        var shouldContinueToFilterArguments = true
-        while shouldContinueToFilterArguments {
-            (args, shouldContinueToFilterArguments) = partiallyFilter(arguments: args)
-        }
-        return args.filter {
-            ![
+        let args = args + ["-D", "DEBUG"]
+        var shouldFilterNextElement = false
+        let result: [String] = args.compactMap {
+            if $0 == "-output-file-map" {
+                shouldFilterNextElement = true
+                return nil
+            }
+
+            if shouldFilterNextElement {
+                shouldFilterNextElement = false
+                return nil
+            }
+
+            guard [
                 "-parseable-output",
                 "-incremental",
                 "-serialize-diagnostics",
                 "-emit-dependencies"
-            ].contains($0)
-        }.map {
+            ].contains($0) else {
+                return nil
+            }
+
             if $0 == "-O" {
                 return "-Onone"
-            } else if $0 == "-DNDEBUG=1" {
+            }
+
+            if $0 == "-DNDEBUG=1" {
                 return "-DDEBUG=1"
             }
-            return $0
+
+            // https://github.com/realm/SwiftLint/issues/3365
+            return $0.replacingOccurrences(of: "\\=", with: "=")
         }
+        return result
     }
 }
 
@@ -84,9 +116,9 @@ private extension Scanner {
 }
 #endif
 
-private func parseCLIArguments(_ string: String) -> [String] {
+private func parseCLIArguments(_ invocation: CompilerInvocation) -> [String] {
     let escapedSpacePlaceholder = "\u{0}"
-    let scanner = Scanner(string: string)
+    let scanner = Scanner(string: invocation.elements.joined(separator: " "))
     var str = ""
     var didStart = false
     while let result = scanner.scanUpToString("\"") {
@@ -105,24 +137,6 @@ private func parseCLIArguments(_ string: String) -> [String] {
             .components(separatedBy: " ")
             .map { $0.replacingOccurrences(of: escapedSpacePlaceholder, with: " ") }
     )
-}
-
-/**
- Partially filters compiler arguments from `xcodebuild` to something that SourceKit/Clang will accept.
-
- - parameter args: Compiler arguments, as parsed from `xcodebuild`.
-
- - returns: A tuple of partially filtered compiler arguments in `.0`, and whether or not there are
- more flags to remove in `.1`.
- */
-private func partiallyFilter(arguments args: [String]) -> ([String], Bool) {
-    guard let indexOfFlagToRemove = args.firstIndex(of: "-output-file-map") else {
-        return (args, false)
-    }
-    var args = args
-    args.remove(at: args.index(after: indexOfFlagToRemove))
-    args.remove(at: indexOfFlagToRemove)
-    return (args, true)
 }
 
 private extension Array where Element == String {

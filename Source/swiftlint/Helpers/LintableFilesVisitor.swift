@@ -6,8 +6,12 @@ import SwiftLintFramework
 typealias File = String
 typealias Arguments = [String]
 
+struct CompilerInvocation: Hashable {
+    let elements: [String]
+}
+
 enum CompilerInvocations {
-    case buildLog(compilerInvocations: [String])
+    case buildLog(compilerInvocations: [CompilerInvocation])
     case compilationDatabase(compileCommands: [File: Arguments])
 
     func arguments(forFile path: String?) -> [String] {
@@ -168,7 +172,7 @@ struct LintableFilesVisitor {
         return .failure(.usageError(description: "Could not read compiler invocations"))
     }
 
-    private static func loadLogCompilerInvocations(_ path: String) -> [String]? {
+    private static func loadLogCompilerInvocations(_ path: String) -> [CompilerInvocation]? {
         if let data = FileManager.default.contents(atPath: path),
             let logContents = String(data: data, encoding: .utf8) {
             if logContents.isEmpty {

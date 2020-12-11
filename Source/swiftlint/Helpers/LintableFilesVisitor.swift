@@ -25,11 +25,11 @@ enum CompilerInvocations {
 
 struct AllBuildTimeMetrics: Equatable {
     let totalBuildTime: TimeInterval
-    public let items: [File: Set<BuildTimeItem>]
+    public let items: [File: Set<ExpressionBuildTime>]
 
     public init(
         totalBuildTime: TimeInterval,
-        items: [File: Set<BuildTimeItem>]
+        items: [File: Set<ExpressionBuildTime>]
     ) {
         self.totalBuildTime = totalBuildTime
         self.items = items
@@ -37,12 +37,12 @@ struct AllBuildTimeMetrics: Equatable {
 
     public func buildTimeMetricts(forFile path: String?) -> BuildTimeMetrics {
         guard let path = path else {
-            return BuildTimeMetrics(totalBuildTime: totalBuildTime, items: [])
+            return BuildTimeMetrics(totalBuildTime: totalBuildTime, expressionsBuildTime: [])
         }
 
         return BuildTimeMetrics(
             totalBuildTime: totalBuildTime,
-            items: Array(items[path] ?? [])
+            expressionsBuildTime: Array(items[path] ?? [])
         )
     }
 }
@@ -177,7 +177,7 @@ struct LintableFilesVisitor {
             return Linter(
                 file: file,
                 configuration: configuration,
-                buildLogInfo: BuildLogInfo(
+                additionalInfo: AdditionalInfo(
                     compilerArguments: compilerArguments,
                     buildTimeMetrics: buildTimeMetrics
                 )

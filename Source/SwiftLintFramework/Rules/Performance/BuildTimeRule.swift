@@ -16,14 +16,14 @@ public struct BuildTimeRule: ConfigurationProviderRule, AnalyzerRule, AutomaticT
         requiresFileOnDisk: true
     )
 
-    public func validate(file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> [StyleViolation] {
-        guard let buildTimeMetrics = buildLogInfo.buildTimeMetrics else {
+    public func validate(file: SwiftLintFile, additionalInfo: AdditionalInfo) -> [StyleViolation] {
+        guard let buildTimeMetrics = additionalInfo.buildTimeMetrics else {
             return []
         }
 
         let adjustedTotalBuildTime = buildTimeMetrics.totalBuildTime / 100
 
-        return buildTimeMetrics.items.compactMap {
+        return buildTimeMetrics.expressionsBuildTime.compactMap {
             let percentage = $0.buildTime / adjustedTotalBuildTime
             guard percentage > 0.2 else {
                 return nil

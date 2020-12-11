@@ -38,12 +38,12 @@ class CollectingRuleTests: XCTestCase {
 
     func testCollectsAnalyzerFiles() {
         struct Spec: MockCollectingRule & AnalyzerRule {
-            func collectInfo(for file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> BuildLogInfo {
-                return buildLogInfo
+            func collectInfo(for file: SwiftLintFile, additionalInfo: AdditionalInfo) -> AdditionalInfo {
+                return additionalInfo
             }
-            func validate(file: SwiftLintFile, collectedInfo: [SwiftLintFile: BuildLogInfo], buildLogInfo: BuildLogInfo)
+            func validate(file: SwiftLintFile, collectedInfo: [SwiftLintFile: AdditionalInfo], additionalInfo: AdditionalInfo)
                 -> [StyleViolation] {
-                    XCTAssertEqual(collectedInfo[file], buildLogInfo)
+                    XCTAssertEqual(collectedInfo[file], additionalInfo)
                     return [StyleViolation(ruleDescription: Spec.description,
                                            location: Location(file: file, byteOffset: 0))]
             }
@@ -78,11 +78,11 @@ class CollectingRuleTests: XCTestCase {
         }
 
         struct AnalyzerSpec: MockCollectingRule & AnalyzerRule & CollectingCorrectableRule {
-            func collectInfo(for file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> String {
+            func collectInfo(for file: SwiftLintFile, additionalInfo: AdditionalInfo) -> String {
                 return file.contents
             }
 
-            func validate(file: SwiftLintFile, collectedInfo: [SwiftLintFile: String], buildLogInfo: BuildLogInfo)
+            func validate(file: SwiftLintFile, collectedInfo: [SwiftLintFile: String], additionalInfo: AdditionalInfo)
                 -> [StyleViolation] {
                     if collectedInfo[file] == "baz" {
                         return [StyleViolation(ruleDescription: Spec.description,
@@ -93,7 +93,7 @@ class CollectingRuleTests: XCTestCase {
             }
 
             func correct(file: SwiftLintFile, collectedInfo: [SwiftLintFile: String],
-                         buildLogInfo: BuildLogInfo) -> [Correction] {
+                         additionalInfo: AdditionalInfo) -> [Correction] {
                 if collectedInfo[file] == "baz" {
                     return [Correction(ruleDescription: Spec.description,
                                        location: Location(file: file, byteOffset: 2))]

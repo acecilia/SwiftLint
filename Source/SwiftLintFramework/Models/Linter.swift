@@ -53,7 +53,7 @@ private extension Rule {
               storage: RuleStorage,
               configuration: Configuration,
               superfluousDisableCommandRule: SuperfluousDisableCommandRule?,
-              buildLogInfo: BuildLogInfo) -> LintResult? {
+              additionalInfo: AdditionalInfo) -> LintResult? {
         if !(self is SourceKitFreeRule) && file.sourcekitdFailed {
             return nil
         }
@@ -64,10 +64,10 @@ private extension Rule {
         let ruleTime: (String, Double)?
         if benchmark {
             let start = Date()
-            violations = validate(file: file, using: storage, buildLogInfo: buildLogInfo)
+            violations = validate(file: file, using: storage, additionalInfo: additionalInfo)
             ruleTime = (ruleID, -start.timeIntervalSinceNow)
         } else {
-            violations = validate(file: file, using: storage, buildLogInfo: buildLogInfo)
+            violations = validate(file: file, using: storage, additionalInfo: additionalInfo)
             ruleTime = nil
         }
 
@@ -108,56 +108,6 @@ private extension Rule {
     }
 }
 
-public struct BuildTimeItem: Hashable {
-    public let buildTime: TimeInterval
-    let location: Location
-    let expressionType: String
-
-    public init(
-        buildTime: TimeInterval,
-        location: Location,
-        expressionType: String
-    ) {
-        self.buildTime = buildTime
-        self.location = location
-        self.expressionType = expressionType
-    }
-}
-
-public struct BuildTimeMetrics: Equatable {
-    let totalBuildTime: TimeInterval
-    let items: [BuildTimeItem]
-
-    public init(
-        totalBuildTime: TimeInterval,
-        items: [BuildTimeItem]
-    ) {
-        self.totalBuildTime = totalBuildTime
-        self.items = items
-    }
-}
-
-public struct BuildLogInfo: Equatable {
-    let compilerArguments: [String]
-    let buildTimeMetrics: BuildTimeMetrics?
-
-    public init(
-        compilerArguments: [String],
-        buildTimeMetrics: BuildTimeMetrics?
-    ) {
-        self.compilerArguments = compilerArguments
-        self.buildTimeMetrics = buildTimeMetrics
-    }
-
-    public static var empty: BuildLogInfo {
-        return BuildLogInfo(compilerArguments: [], buildTimeMetrics: nil)
-    }
-
-    var isEmpty: Bool {
-        return compilerArguments.isEmpty && (buildTimeMetrics?.items.isEmpty ?? true)
-    }
-}
-
 /// Represents a file that can be linted for style violations and corrections after being collected.
 public struct Linter {
     /// The file to lint with this linter.
@@ -167,7 +117,7 @@ public struct Linter {
     fileprivate let rules: [Rule]
     fileprivate let cache: LinterCache?
     fileprivate let configuration: Configuration
-    fileprivate let buildLogInfo: BuildLogInfo
+    fileprivate let additionalInfo: AdditionalInfo
 
     /// Creates a `Linter` by specifying its properties directly.
     ///
@@ -175,14 +125,18 @@ public struct Linter {
     /// - parameter configuration:     The SwiftLint configuration to apply to this linter.
     /// - parameter cache:             The persisted cache to use for this linter.
     /// - parameter compilerArguments: The compiler arguments to use for this linter if it is to execute analyzer rules.
-    public init(file: SwiftLintFile, configuration: Configuration = Configuration.default, cache: LinterCache? = nil,
-                buildLogInfo: BuildLogInfo = .empty) {
+    public init(
+        file: SwiftLintFile,
+        configuration: Configuration = Configuration.default,
+        cache: LinterCache? = nil,
+        additionalInfo: AdditionalInfo = .empty
+    ) {
         self.file = file
         self.cache = cache
         self.configuration = configuration
-        self.buildLogInfo = buildLogInfo
+        self.additionalInfo = additionalInfo
         let rules = configuration.rules.filter { rule in
-            if buildLogInfo.isEmpty {
+            if additionalInfo.isEmpty {
                 return !(rule is AnalyzerRule)
             } else {
                 return rule is AnalyzerRule
@@ -199,7 +153,7 @@ public struct Linter {
     /// - returns: A linter capable of checking for violations after running each rule's collection step.
     public func collect(into storage: RuleStorage) -> CollectedLinter {
         DispatchQueue.concurrentPerform(iterations: rules.count) { idx in
-            rules[idx].collectInfo(for: file, into: storage, buildLogInfo: buildLogInfo)
+            rules[idx].collectInfo(for: file, into: storage, additionalInfo: additionalInfo)
         }
         return CollectedLinter(from: self)
     }
@@ -214,14 +168,14 @@ public struct CollectedLinter {
     private let rules: [Rule]
     private let cache: LinterCache?
     private let configuration: Configuration
-    private let buildLogInfo: BuildLogInfo
+    private let additionalInfo: AdditionalInfo
 
     fileprivate init(from linter: Linter) {
         file = linter.file
         rules = linter.rules
         cache = linter.cache
         configuration = linter.configuration
-        buildLogInfo = linter.buildLogInfo
+        additionalInfo = linter.additionalInfo
     }
 
     /// Computes or retrieves style violations.
@@ -261,7 +215,7 @@ public struct CollectedLinter {
                     storage: storage,
                     configuration: self.configuration,
                     superfluousDisableCommandRule: superfluousDisableCommandRule,
-                    buildLogInfo: self.buildLogInfo)
+                    additionalInfo: self.additionalInfo)
         }
         let undefinedSuperfluousCommandViolations = self.undefinedSuperfluousCommandViolations(
             regions: regions, configuration: configuration,
@@ -327,7 +281,7 @@ public struct CollectedLinter {
 
         var corrections = [Correction]()
         for rule in rules.compactMap({ $0 as? CorrectableRule }) {
-            let newCorrections = rule.correct(file: file, using: storage, buildLogInfo: buildLogInfo)
+            let newCorrections = rule.correct(file: file, using: storage, additionalInfo: additionalInfo)
             corrections += newCorrections
             if newCorrections.isNotEmpty {
                 file.invalidateCache()

@@ -19,8 +19,8 @@ struct BuildTimeMetricsExtractor {
 }
 
 private extension BuildTimeMetricsExtractor {
-    static func getBuildTimeItems(_ string: String) -> [File: Set<BuildTimeItem>] {
-        var items: [File: Set<BuildTimeItem>] = [:]
+    static func getBuildTimeItems(_ string: String) -> [File: Set<ExpressionBuildTime>] {
+        var storage: [File: Set<ExpressionBuildTime>] = [:]
         string.enumerateLines { line, _ in
             guard let groupMatches = buildTimeMetricRegex.groupMatches(in: line) else {
                 return
@@ -51,13 +51,13 @@ private extension BuildTimeMetricsExtractor {
             )
 
 
-            let item = BuildTimeItem(buildTime: buildTime, location: location, expressionType: expressionType)
-            var existingItems = items[file] ?? []
-            existingItems.insert(item)
-            items[file] = existingItems
+            let expressionBuildTime = ExpressionBuildTime(buildTime: buildTime, location: location, expressionType: expressionType)
+            var existingExpressionBuildTimes = storage[file] ?? []
+            existingExpressionBuildTimes.insert(expressionBuildTime)
+            storage[file] = existingExpressionBuildTimes
         }
 
-        return items
+        return storage
     }
 
     static func getTotalBuildTime(_ string: String) -> TimeInterval? {

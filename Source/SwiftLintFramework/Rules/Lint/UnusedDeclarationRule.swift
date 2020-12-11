@@ -30,8 +30,8 @@ public struct UnusedDeclarationRule: AutomaticTestableRule, ConfigurationProvide
         requiresFileOnDisk: true
     )
 
-    public func collectInfo(for file: SwiftLintFile, buildLogInfo: BuildLogInfo) -> UnusedDeclarationRule.FileUSRs {
-        guard buildLogInfo.compilerArguments.isNotEmpty else {
+    public func collectInfo(for file: SwiftLintFile, additionalInfo: AdditionalInfo) -> UnusedDeclarationRule.FileUSRs {
+        guard additionalInfo.compilerArguments.isNotEmpty else {
             queuedPrintError("""
                 Attempted to lint file at path '\(file.path ?? "...")' with the \
                 \(Self.description.identifier) rule without any compiler arguments.
@@ -39,7 +39,7 @@ public struct UnusedDeclarationRule: AutomaticTestableRule, ConfigurationProvide
             return .empty
         }
 
-        guard let index = file.index(compilerArguments: buildLogInfo.compilerArguments), index.value.isNotEmpty else {
+        guard let index = file.index(compilerArguments: additionalInfo.compilerArguments), index.value.isNotEmpty else {
             queuedPrintError("""
                 Could not index file at path '\(file.path ?? "...")' with the \
                 \(Self.description.identifier) rule.
@@ -60,13 +60,13 @@ public struct UnusedDeclarationRule: AutomaticTestableRule, ConfigurationProvide
             referenced: file.referencedUSRs(index: index),
             declared: file.declaredUSRs(index: index,
                                         editorOpen: editorOpen,
-                                        compilerArguments: buildLogInfo.compilerArguments,
+                                        compilerArguments: additionalInfo.compilerArguments,
                                         includePublicAndOpen: configuration.includePublicAndOpen)
         )
     }
 
     public func validate(file: SwiftLintFile, collectedInfo: [SwiftLintFile: UnusedDeclarationRule.FileUSRs],
-                         buildLogInfo: BuildLogInfo) -> [StyleViolation] {
+                         additionalInfo: AdditionalInfo) -> [StyleViolation] {
         let allReferencedUSRs = collectedInfo.values.reduce(into: Set()) { $0.formUnion($1.referenced) }
         return violationOffsets(declaredUSRs: collectedInfo[file]?.declared ?? [],
                                 allReferencedUSRs: allReferencedUSRs)

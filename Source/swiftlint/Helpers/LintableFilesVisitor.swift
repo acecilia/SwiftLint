@@ -25,7 +25,6 @@ enum CompilerInvocations {
 
 struct AllBuildTimeMetrics: Equatable {
     let totalBuildTime: TimeInterval
-    let totalCalculatedBuildTime: TimeInterval
     public let items: [File: Set<BuildTimeItem>]
 
     public init(
@@ -33,20 +32,16 @@ struct AllBuildTimeMetrics: Equatable {
         items: [File: Set<BuildTimeItem>]
     ) {
         self.totalBuildTime = totalBuildTime
-        self.totalCalculatedBuildTime = items.values.flatMap { $0 }.reduce(into: 0) { result, item in
-            result += item.buildTime
-        }
         self.items = items
     }
 
     public func buildTimeMetricts(forFile path: String?) -> BuildTimeMetrics {
         guard let path = path else {
-            return BuildTimeMetrics(totalBuildTime: totalBuildTime, totalCalculatedBuildTime: 0, items: [])
+            return BuildTimeMetrics(totalBuildTime: totalBuildTime, items: [])
         }
 
         return BuildTimeMetrics(
             totalBuildTime: totalBuildTime,
-            totalCalculatedBuildTime: totalCalculatedBuildTime,
             items: Array(items[path] ?? [])
         )
     }

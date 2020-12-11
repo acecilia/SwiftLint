@@ -33,7 +33,7 @@ public struct BuildTimeRule: ConfigurationProviderRule, AnalyzerRule, AutomaticT
                 ruleDescription: Self.description,
                 severity: configuration.severity,
                 location: $0.location,
-                reason: "Build time was \($0.buildTime)ms - \(buildTimeMetrics.totalBuildTime)ms - \(buildTimeMetrics.totalCalculatedBuildTime)ms - (\(String(format: "%.3f", percentage))%)"
+                reason: "Build time was \($0.buildTime)ms - \(buildTimeMetrics.totalBuildTime)ms - (\(String(format: "%.3f", percentage))%)"
             )
         }
     }

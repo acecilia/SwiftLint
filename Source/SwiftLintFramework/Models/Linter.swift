@@ -126,16 +126,13 @@ public struct BuildTimeItem: Hashable {
 
 public struct BuildTimeMetrics: Equatable {
     let totalBuildTime: TimeInterval
-    let totalCalculatedBuildTime: TimeInterval
     let items: [BuildTimeItem]
 
     public init(
         totalBuildTime: TimeInterval,
-        totalCalculatedBuildTime: TimeInterval,
         items: [BuildTimeItem]
     ) {
         self.totalBuildTime = totalBuildTime
-        self.totalCalculatedBuildTime = totalCalculatedBuildTime
         self.items = items
     }
 }

@@ -2,14 +2,14 @@ import Foundation
 
 public struct AdditionalInfo: Equatable {
     let compilerArguments: [String]
-    let buildTimeMetrics: BuildTimeMetrics?
+    @LazyWrapper private(set) var buildTimeMetrics: BuildTimeMetrics?
 
     public init(
         compilerArguments: [String],
-        buildTimeMetrics: BuildTimeMetrics?
+        buildTimeMetrics: @autoclosure @escaping () -> BuildTimeMetrics?
     ) {
         self.compilerArguments = compilerArguments
-        self.buildTimeMetrics = buildTimeMetrics
+        self._buildTimeMetrics = .init(wrappedValue: buildTimeMetrics())
     }
 
     public static var empty: AdditionalInfo {

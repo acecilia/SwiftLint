@@ -35,9 +35,9 @@ struct AllBuildTimeMetrics: Equatable {
         self.items = items
     }
 
-    public func buildTimeMetricts(forFile path: String?) -> BuildTimeMetrics {
+    public func buildTimeMetricts(forFile path: String?) -> BuildTimeMetrics? {
         guard let path = path else {
-            return BuildTimeMetrics(totalBuildTime: totalBuildTime, expressionsBuildTime: [])
+            return nil
         }
 
         return BuildTimeMetrics(
@@ -51,7 +51,7 @@ enum LintOrAnalyzeModeWithCompilerArguments {
     case lint
     case analyze(
         allCompilerInvocations: CompilerInvocations,
-        buildTimeMetrics: AllBuildTimeMetrics?
+        buildTimeMetricsExtractor: BuildTimeMetricsExtractor
     )
 }
 
@@ -99,7 +99,8 @@ struct LintableFilesVisitor {
 
     private init(paths: [String], action: String, useSTDIN: Bool, quiet: Bool,
                  useScriptInputFiles: Bool, forceExclude: Bool, useExcludingByPrefix: Bool,
-                 cache: LinterCache?, compilerInvocations: CompilerInvocations?, buildTimeMetrics: AllBuildTimeMetrics?,
+                 cache: LinterCache?, compilerInvocations: CompilerInvocations?,
+                 buildTimeMetricsExtractor: BuildTimeMetricsExtractor?,
                  allowZeroLintableFiles: Bool, block: @escaping (CollectedLinter) -> Void) {
         self.paths = resolveParamsFiles(args: paths)
         self.action = action
@@ -110,8 +111,11 @@ struct LintableFilesVisitor {
         self.useExcludingByPrefix = useExcludingByPrefix
         self.cache = cache
         self.parallel = true
-        if let compilerInvocations = compilerInvocations {
-            self.mode = .analyze(allCompilerInvocations: compilerInvocations, buildTimeMetrics: buildTimeMetrics)
+        if let compilerInvocations = compilerInvocations, let buildTimeMetricsExtractor = buildTimeMetricsExtractor {
+            self.mode = .analyze(
+                allCompilerInvocations: compilerInvocations,
+                buildTimeMetricsExtractor: buildTimeMetricsExtractor
+            )
         } else {
             self.mode = .lint
         }
@@ -125,10 +129,10 @@ struct LintableFilesVisitor {
                        block: @escaping (CollectedLinter) -> Void)
         -> Result<LintableFilesVisitor, CommandantError<()>> {
         let compilerInvocations: CompilerInvocations?
-        let buildTimeMetricts: AllBuildTimeMetrics?
+        let buildTimeMetricsExtractor: BuildTimeMetricsExtractor?
         if options.mode == .lint {
             compilerInvocations = nil
-            buildTimeMetricts = nil
+            buildTimeMetricsExtractor = nil
         } else {
             switch loadCompilerInvocations(options) {
             case let .success(invocations):
@@ -137,9 +141,9 @@ struct LintableFilesVisitor {
                 return .failure(error)
             }
 
-            switch loadBuildTimeMetrics(options) {
-            case let .success(metrics):
-                buildTimeMetricts = metrics
+            switch loadBuildTimeMetricsExtractor(options) {
+            case let .success(extractor):
+                buildTimeMetricsExtractor = extractor
             case let .failure(error):
                 return .failure(error)
             }
@@ -152,7 +156,7 @@ struct LintableFilesVisitor {
                                            useExcludingByPrefix: options.useExcludingByPrefix,
                                            cache: cache,
                                            compilerInvocations: compilerInvocations,
-                                           buildTimeMetrics: buildTimeMetricts,
+                                           buildTimeMetricsExtractor: buildTimeMetricsExtractor,
                                            allowZeroLintableFiles: allowZeroLintableFiles, block: block)
         return .success(visitor)
     }
@@ -161,8 +165,9 @@ struct LintableFilesVisitor {
         switch self.mode {
         case .lint:
             return false
-        case let .analyze(compilerInvocations, buildTimeMetrics):
+        case let .analyze(compilerInvocations, buildTimeMetricsExtractor):
             let compilerArguments = compilerInvocations.arguments(forFile: path)
+            let buildTimeMetrics = buildTimeMetricsExtractor.allBuildTimeMetrics
             return compilerArguments.isEmpty && (buildTimeMetrics?.items.isEmpty ?? true)
         }
     }
@@ -171,15 +176,14 @@ struct LintableFilesVisitor {
         switch self.mode {
         case .lint:
             return Linter(file: file, configuration: configuration, cache: cache)
-        case let .analyze(compilerInvocations, buildTimeMetrics):
+        case let .analyze(compilerInvocations, buildTimeMetricsExtractor):
             let compilerArguments = compilerInvocations.arguments(forFile: file.path)
-            let buildTimeMetrics = buildTimeMetrics?.buildTimeMetricts(forFile: file.path)
             return Linter(
                 file: file,
                 configuration: configuration,
                 additionalInfo: AdditionalInfo(
                     compilerArguments: compilerArguments,
-                    buildTimeMetrics: buildTimeMetrics
+                    buildTimeMetrics: buildTimeMetricsExtractor.buildTimeMetricts(forFile: file.path)
                 )
             )
         }
@@ -213,33 +217,23 @@ struct LintableFilesVisitor {
         return .failure(.usageError(description: "Could not read compiler invocations"))
     }
 
-    private static func loadBuildTimeMetrics(_ options: LintOrAnalyzeOptions)
-        -> Result<AllBuildTimeMetrics, CommandantError<()>> {
-        if !options.compilerLogPath.isEmpty {
-            let path = options.compilerLogPath
-            guard let buildTimeMetrics = self.loadLogBuildTimeMetrics(path) else {
-                return .failure(
-                    .usageError(description: "Could not read compiler log at path: '\(path)'")
-                )
-            }
-
-            return .success(buildTimeMetrics)
+    private static func loadBuildTimeMetricsExtractor(
+        _ options: LintOrAnalyzeOptions
+    ) -> Result<BuildTimeMetricsExtractor, CommandantError<()>> {
+        guard !options.compilerLogPath.isEmpty else {
+            return .failure(.usageError(description: "Could not read build time metrics"))
         }
 
-        return .failure(.usageError(description: "Could not read build time metrics"))
-    }
-
-    private static func loadLogBuildTimeMetrics(_ path: String) -> AllBuildTimeMetrics? {
-        if let data = FileManager.default.contents(atPath: path),
-            let logContents = String(data: data, encoding: .utf8) {
-            if logContents.isEmpty {
-                return nil
-            }
-
-            return BuildTimeMetricsExtractor.getBuildTimeMetrics(compilerLogs: logContents)
+        let path = options.compilerLogPath
+        guard let data = FileManager.default.contents(atPath: path),
+              let logContents = String(data: data, encoding: .utf8),
+              !logContents.isEmpty else {
+            return .failure(
+                .usageError(description: "Could not read compiler log at path: '\(path)'")
+            )
         }
 
-        return nil
+        return .success(BuildTimeMetricsExtractor(compilerLogs: logContents))
     }
 
     private static func loadLogCompilerInvocations(_ path: String) -> [String]? {

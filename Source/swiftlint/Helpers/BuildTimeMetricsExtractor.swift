@@ -1,75 +1,96 @@
 import Foundation
 import SwiftLintFramework
+import Commandant
 
-struct BuildTimeMetricsExtractor {
-    private static let totalBuildTimeRegex = try! NSRegularExpression(pattern: #"\*\* BUILD \w+ \*\* \[([\d.]+) sec\]"#)
-    private static let buildTimeMetricRegex = try! NSRegularExpression(pattern: #"^(\d*\.?\d*)ms\t(.+)\t(.*)"#)
-    private static let locationRegex = try! NSRegularExpression(pattern: #"(.*):(\d+):(\d+)"#, options: [])
+extension BuildTimeMetricsExtractor {
+    enum Error: Swift.Error {
+        case totalBuildTimeNotFound
+        case unexpectedExpressionBuildTime(line: String)
+        case unexpectedFileLocation(line: String)
+    }
+}
 
-    static func getBuildTimeMetrics(compilerLogs: String) -> AllBuildTimeMetrics? {
-        guard let totalBuildTime = getTotalBuildTime(compilerLogs) else {
+final class BuildTimeMetricsExtractor {
+    private let compilerLogs: String
+    private (set) lazy var allBuildTimeMetrics = try? Self.getBuildTimeMetrics(compilerLogs: compilerLogs).get()
+
+    init(compilerLogs: String) {
+        self.compilerLogs = compilerLogs
+    }
+
+    func buildTimeMetricts(forFile path: String?) -> BuildTimeMetrics? {
+        guard let path = path else {
             return nil
         }
-        let items = getBuildTimeItems(compilerLogs)
-        return AllBuildTimeMetrics(
-            totalBuildTime: totalBuildTime,
-            items: items
+
+        guard let allBuildTimeMetrics = allBuildTimeMetrics else {
+            return nil
+        }
+
+        return BuildTimeMetrics(
+            totalBuildTime: allBuildTimeMetrics.totalBuildTime,
+            expressionsBuildTime: Array(allBuildTimeMetrics.items[path] ?? [])
         )
     }
 }
 
 private extension BuildTimeMetricsExtractor {
-    static func getBuildTimeItems(_ string: String) -> [File: Set<ExpressionBuildTime>] {
-        let group = DispatchGroup()
-        var storage: [File: Set<ExpressionBuildTime>] = [:]
-        string.enumerateLines { line, _ in
-            group.enter()
-            DispatchQueue.global().async {
-                guard let (file, expressionBuildTime) = findExpressionBuildTime(line: line) else {
-                    group.leave()
-                    return
-                }
-                DispatchQueue.main.async {
-                    var existingExpressionBuildTimes = storage[file] ?? []
-                    existingExpressionBuildTimes.insert(expressionBuildTime)
-                    storage[file] = existingExpressionBuildTimes
-                    group.leave()
-                }
-            }
+    static let totalBuildTimeRegex = try! NSRegularExpression(pattern: #"\*\* BUILD \w+ \*\* \[([\d.]+) sec\]"#)
+    static let buildTimeMetricRegex = try! NSRegularExpression(pattern: #"^(\d*\.?\d*)ms\t(.+)\t(.*)"#)
+    static let locationRegex = try! NSRegularExpression(pattern: #"(.*):(\d+):(\d+)"#)
+
+    static func getBuildTimeMetrics(compilerLogs: String) -> Result<AllBuildTimeMetrics, CommandantError<Swift.Error>> {
+        do {
+            let totalBuildTime = try getTotalBuildTime(compilerLogs)
+            let items = getBuildTimeItems(compilerLogs)
+            let allBuildTimeMetrics = AllBuildTimeMetrics(
+                totalBuildTime: totalBuildTime,
+                items: items
+            )
+            return .success(allBuildTimeMetrics)
+        } catch {
+            return .failure(.commandError(error))
         }
-        group.wait()
+    }
+
+    static func getBuildTimeItems(_ string: String) -> [File: Set<ExpressionBuildTime>] {
+        let storage = ConcurrentLineExtractor.extract(string: string, extractOperation: extractExpressionBuildTime)
         return storage
     }
 
-    static func findExpressionBuildTime(line: String) -> (File, ExpressionBuildTime)? {
+    static func extractExpressionBuildTime(line: String) throws -> (File, ExpressionBuildTime)? {
         guard let groupMatches = buildTimeMetricRegex.groupMatches(in: line) else {
+            // This line does not contain built time metrics
             return nil
         }
 
         guard let timeString = groupMatches[safe: 0],
               let fileInfo = groupMatches[safe: 1],
               let expressionType = groupMatches[safe: 2] else {
-            assertionFailure("This must never happen")
-            return nil
+            fatalError("This must never happen: if the regex matched, then all this groups must be found")
         }
 
         guard let buildTime = TimeInterval(timeString) else {
-            assertionFailure("This must never happen")
-            return nil
+            throw BuildTimeMetricsExtractor.Error.unexpectedExpressionBuildTime(line: line)
         }
 
-        guard let locationGroupMatches = locationRegex.groupMatches(in: fileInfo),
-              let file = locationGroupMatches[safe: 0] else {
+        guard let locationGroupMatches = locationRegex.groupMatches(in: fileInfo) else {
+            // Here we get rid of time metrics with invalid localizations. For exmaple:
             // 0.04ms    <invalid loc>    getter hashValue
             return nil
         }
 
-        let location = Location(
-            file: file,
-            line: locationGroupMatches[safe: 1].flatMap { Int($0) },
-            character: locationGroupMatches[safe: 2].flatMap { Int($0) }
-        )
+        guard let file = locationGroupMatches[safe: 0],
+              let lineString = locationGroupMatches[safe: 1],
+              let characterString = locationGroupMatches[safe: 2] else {
+            fatalError("This must never happen: if the regex matched, then all this groups must be found")
+        }
 
+        guard let lineNumber = Int(lineString), let characterNumber = Int(characterString) else {
+            throw BuildTimeMetricsExtractor.Error.unexpectedFileLocation(line: line)
+        }
+
+        let location = Location(file: file, line: lineNumber, character: characterNumber)
         let expressionBuildTime = ExpressionBuildTime(
             buildTime: buildTime,
             location: location,
@@ -78,19 +99,12 @@ private extension BuildTimeMetricsExtractor {
         return (file, expressionBuildTime)
     }
 
-    static func getTotalBuildTime(_ string: String) -> TimeInterval? {
-//        guard let indexOfLastLineBreak = string
-//                .trimmingTrailingCharacters(in: .whitespacesAndNewlines)
-//                .lastIndex(of: "\n") else {
-//            return nil
-//        }
-//        let lastLine = String(string.suffix(from: indexOfLastLineBreak))
-        // Apply regex on the last line and not on the full build log, for better performance
+    static func getTotalBuildTime(_ string: String) throws -> TimeInterval {
         guard let groupMatches = totalBuildTimeRegex.groupMatches(in: string),
               let totalBuildTimeString = groupMatches.first,
               let totalBuildTimeInSeconds = TimeInterval(totalBuildTimeString)
               else {
-            return nil
+            throw BuildTimeMetricsExtractor.Error.totalBuildTimeNotFound
         }
 
         return totalBuildTimeInSeconds * 1000
@@ -108,23 +122,14 @@ extension Array {
 }
 
 private extension NSRegularExpression {
-    func firstMatch(in text: String) -> String? {
-        let result = matches(in: text, range: NSRange(text.startIndex..., in: text))
-        return result.first.map {
-            String(text[Range($0.range, in: text)!])
-        }
-    }
-
     func groupMatches(in text: String) -> [String]? {
         guard let match = matches(in: text, range: NSRange(text.startIndex..., in: text)).first else {
             return nil
         }
 
-        return (1 ..< match.numberOfRanges).compactMap {
+        return (1 ..< match.numberOfRanges).map {
             let rangeBounds = match.range(at: $0)
-            guard let range = Range(rangeBounds, in: text) else {
-                return nil
-            }
+            let range = Range(rangeBounds, in: text)!
             return String(text[range])
         }
     }
